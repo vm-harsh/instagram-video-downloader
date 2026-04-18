@@ -1,0 +1,27 @@
+{
+  "name": "instagram-media-downloader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scalable MERN Instagram media downloader using yt-dlp, Redis, BullMQ, MongoDB, React, GSAP, and Three.js.",
+  "scripts": {
+    "install:all": "npm install --workspaces",
+    "dev": "concurrently -n api,worker,client -c cyan,magenta,green \"npm run dev -w server\" \"npm run dev -w worker\" \"npm run dev -w client\"",
+    "dev:api": "npm run dev -w server",
+    "dev:worker": "npm run dev -w worker",
+    "dev:client": "npm run dev -w client",
+    "build": "npm run build -w client",
+    "start": "npm run start -w server",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "workspaces": [
+    "server",
+    "worker",
+    "client"
+  ],
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
