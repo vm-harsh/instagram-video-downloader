@@ -90,7 +90,7 @@ export function createYtDlpDownloadStream(url, index) {
     args.push('--playlist-items', String(index + 1));
   }
 
-  args.push('-f', 'bv*+ba/best', '-o', '-', url);
+  args.push('-f', 'best[ext=mp4][vcodec!=none][acodec!=none]/best[vcodec!=none][acodec!=none]/best', '-o', '-', url);
 
   return spawn(env.YT_DLP_PATH, args, {
     stdio: ['ignore', 'pipe', 'pipe'],

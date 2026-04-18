@@ -2,11 +2,15 @@ import { inferTypeFromUrl } from '../utils/instagramUrl.js';
 
 function pickBestFormat(info) {
   const formats = Array.isArray(info.formats) ? info.formats : [];
-  const direct = formats
-    .filter(format => format.url && ['https', 'http'].some(protocol => format.url.startsWith(protocol)))
+  const directFormats = formats.filter(format => format.url && ['https://', 'http://'].some(protocol => format.url.startsWith(protocol)));
+  const progressive = directFormats
+    .filter(format => format.vcodec && format.vcodec !== 'none' && format.acodec && format.acodec !== 'none')
+    .sort((a, b) => (b.height || 0) - (a.height || 0));
+  const videoOnly = directFormats
+    .filter(format => format.vcodec && format.vcodec !== 'none')
     .sort((a, b) => (b.height || 0) - (a.height || 0));
 
-  return direct[0]?.url || info.url || info.webpage_url || '';
+  return progressive[0]?.url || info.url || videoOnly[0]?.url || info.webpage_url || '';
 }
 
 function mediaType(info) {
