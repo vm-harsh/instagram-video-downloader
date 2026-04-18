@@ -85,6 +85,24 @@ function inferTypeFromUrl(url) {
   return 'post';
 }
 
+function shortcodeFromUrl(url) {
+  const match = new URL(url).pathname.match(/\/(?:p|reel|tv)\/([^/]+)/);
+  return match?.[1] || '';
+}
+
+function shortcodeToMediaId(shortcode) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  let id = 0n;
+
+  for (const char of shortcode) {
+    const index = alphabet.indexOf(char);
+    if (index === -1) return '';
+    id = id * 64n + BigInt(index);
+  }
+
+  return id.toString();
+}
+
 function cookieHeaderFromFile(filePath) {
   if (!existsSync(filePath)) return '';
 
@@ -156,6 +174,64 @@ async function fetchInstagramImageMetadata(url) {
     caption: metaContent(html, 'og:description'),
     duration: undefined,
     timestamp: null,
+    sourceUrl: url
+  };
+}
+
+function bestImageCandidate(item) {
+  const candidates = item?.image_versions2?.candidates || [];
+  return [...candidates].sort((a, b) => (b.width || 0) * (b.height || 0) - (a.width || 0) * (a.height || 0))[0];
+}
+
+function mapApiMedia(item) {
+  const video = item?.video_versions?.[0];
+  const image = bestImageCandidate(item);
+  const isVideo = item?.media_type === 2 && video?.url;
+
+  return {
+    url: isVideo ? video.url : image?.url || '',
+    thumbnail: image?.url || '',
+    type: isVideo ? 'video' : 'image',
+    width: (isVideo ? video.width : image?.width) || undefined,
+    height: (isVideo ? video.height : image?.height) || undefined,
+    duration: item?.video_duration
+  };
+}
+
+async function fetchInstagramApiMetadata(url) {
+  const shortcode = shortcodeFromUrl(url);
+  const mediaId = shortcodeToMediaId(shortcode);
+  if (!mediaId) return fetchInstagramImageMetadata(url);
+
+  const cookiesPath = path.resolve(process.cwd(), env.COOKIES_PATH);
+  const cookie = cookieHeaderFromFile(cookiesPath);
+  const csrfToken = cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] || '';
+  const response = await fetch(`https://www.instagram.com/api/v1/media/${mediaId}/info/`, {
+    headers: {
+      cookie,
+      accept: 'application/json',
+      referer: `https://www.instagram.com/p/${shortcode}/`,
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'x-csrftoken': csrfToken,
+      'x-ig-app-id': '936619743392459'
+    }
+  });
+
+  if (!response.ok) return fetchInstagramImageMetadata(url);
+
+  const payload = await response.json();
+  const root = payload?.items?.[0];
+  const items = Array.isArray(root?.carousel_media) && root.carousel_media.length > 0 ? root.carousel_media : [root];
+  const media = items.filter(Boolean).map(mapApiMedia).filter(item => item.url || item.thumbnail);
+
+  if (media.length === 0) return fetchInstagramImageMetadata(url);
+
+  return {
+    type: media.length > 1 ? 'carousel' : inferTypeFromUrl(url),
+    media,
+    caption: root?.caption?.text || '',
+    duration: media.find(item => item.duration)?.duration,
+    timestamp: root?.taken_at ? new Date(root.taken_at * 1000).toISOString() : null,
     sourceUrl: url
   };
 }
@@ -312,8 +388,9 @@ const worker = new Worker(
       const raw = await runYtDlpJson(url);
       normalized = normalizeInstagramMetadata(raw, url);
     } catch (error) {
-      if (error.rawYtDlpError?.toLowerCase().includes('there is no video in this post')) {
-        normalized = await fetchInstagramImageMetadata(url);
+      const rawError = error.rawYtDlpError?.toLowerCase() || '';
+      if (rawError.includes('there is no video in this post') || rawError.includes('no video formats found')) {
+        normalized = await fetchInstagramApiMetadata(url);
       } else {
         throw error;
       }
