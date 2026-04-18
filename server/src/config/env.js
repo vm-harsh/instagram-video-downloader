@@ -10,6 +10,7 @@ const envSchema = z.object({
   MONGODB_URI: z.string().min(1),
   REDIS_URL: z.string().min(1),
   YT_DLP_PATH: z.string().default('yt-dlp'),
+  COOKIES_FROM_BROWSER: z.string().optional(),
   COOKIES_PATH: z.string().default('./secrets/cookies.txt'),
   ANALYZE_CACHE_TTL_SECONDS: z.coerce.number().default(600),
   ANALYZE_SYNC_WAIT_MS: z.coerce.number().default(25000),

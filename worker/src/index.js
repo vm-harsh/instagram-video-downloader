@@ -17,6 +17,7 @@ const env = z
     MONGODB_URI: z.string().min(1),
     REDIS_URL: z.string().min(1),
     YT_DLP_PATH: z.string().default('yt-dlp'),
+    COOKIES_FROM_BROWSER: z.string().optional(),
     COOKIES_PATH: z.string().default('../server/secrets/cookies.txt'),
     ANALYZE_CACHE_TTL_SECONDS: z.coerce.number().default(600),
     WORKER_CONCURRENCY: z.coerce.number().default(4)
@@ -96,6 +97,16 @@ function cookieHeaderFromFile(filePath) {
     .join('; ');
 }
 
+function hasCookieName(name) {
+  const cookiesPath = path.resolve(process.cwd(), env.COOKIES_PATH);
+  if (!existsSync(cookiesPath)) return false;
+
+  return readFileSync(cookiesPath, 'utf8')
+    .split(/\r?\n/)
+    .filter(line => line && !line.startsWith('#'))
+    .some(line => line.split('\t')[5] === name);
+}
+
 function decodeHtml(value = '') {
   return value
     .replaceAll('&amp;', '&')
@@ -154,7 +165,9 @@ function runYtDlpJson(url) {
     const args = ['--no-playlist'];
     const cookiesPath = path.resolve(process.cwd(), env.COOKIES_PATH);
 
-    if (existsSync(cookiesPath)) {
+    if (env.COOKIES_FROM_BROWSER) {
+      args.push('--cookies-from-browser', env.COOKIES_FROM_BROWSER);
+    } else if (existsSync(cookiesPath)) {
       args.push('--cookies', cookiesPath);
     }
 
@@ -211,6 +224,9 @@ function runYtDlpJson(url) {
 
 function normalizeYtDlpError(rawError) {
   const lower = rawError.toLowerCase();
+  if ((lower.includes('log in') || lower.includes('unreachable')) && !env.COOKIES_FROM_BROWSER && !hasCookieName('sessionid')) {
+    return 'Instagram story downloads need logged-in cookies. Your cookies.txt is missing the sessionid cookie; export cookies again while logged in to Instagram.';
+  }
   if (lower.includes('there is no video in this post')) {
     return 'This Instagram post contains an image, not a video.';
   }

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { env } from '../config/env.js';
 
@@ -16,11 +16,23 @@ function resolveCookiesPath() {
   return path.resolve(process.cwd(), env.COOKIES_PATH);
 }
 
+function hasCookie(name) {
+  const cookiesPath = resolveCookiesPath();
+  if (!existsSync(cookiesPath)) return false;
+
+  return readFileSync(cookiesPath, 'utf8')
+    .split(/\r?\n/)
+    .filter(line => line && !line.startsWith('#'))
+    .some(line => line.split('\t')[5] === name);
+}
+
 function buildBaseArgs() {
   const args = ['--no-playlist'];
   const cookiesPath = resolveCookiesPath();
 
-  if (existsSync(cookiesPath)) {
+  if (env.COOKIES_FROM_BROWSER) {
+    args.push('--cookies-from-browser', env.COOKIES_FROM_BROWSER);
+  } else if (existsSync(cookiesPath)) {
     args.push('--cookies', cookiesPath);
   }
 
@@ -88,6 +100,9 @@ export function createYtDlpDownloadStream(url, index) {
 
 function toUserFacingYtDlpError(rawError) {
   const lower = rawError.toLowerCase();
+  if ((lower.includes('log in') || lower.includes('unreachable')) && !env.COOKIES_FROM_BROWSER && !hasCookie('sessionid')) {
+    return 'Instagram story downloads need logged-in cookies. Your cookies.txt is missing the sessionid cookie; export cookies again while logged in to Instagram.';
+  }
   if (lower.includes('there is no video in this post')) {
     return 'This Instagram post contains an image, not a video.';
   }
